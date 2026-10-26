@@ -10,6 +10,8 @@
             --card-bg: #121212;
             --text-primary: #ffffff;
             --text-secondary: #a0a0a0;
+            --accent-red: #ff5252;
+            --accent-green: #69f0ae;
         }
 
         body {
@@ -63,9 +65,20 @@
         }
 
         .timer {
-            font-size: 16px;
+            font-size: 15px;
             font-weight: bold;
             color: var(--text-primary);
+        }
+
+        .active-status {
+            color: var(--accent-green) !important;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.4; }
+            100% { opacity: 1; }
         }
 
         .title {
@@ -91,7 +104,7 @@
 <body>
 
     <h1>Sky: Timers & Shards</h1>
-    <p class="subtitle">Horarios en vivo y estado de fragmentos</p>
+    <p class="subtitle">Horarios oficiales en tiempo real</p>
 
     <div class="grid">
         <!-- Geyser -->
@@ -102,7 +115,7 @@
             </div>
             <div>
                 <p class="title">Geyser</p>
-                <p class="desc">Próximo evento</p>
+                <p class="desc" id="geyser-desc">Calculando...</p>
             </div>
         </div>
 
@@ -114,7 +127,7 @@
             </div>
             <div>
                 <p class="title">Grandma</p>
-                <p class="desc">Cena en abuela</p>
+                <p class="desc" id="grandma-desc">Calculando...</p>
             </div>
         </div>
 
@@ -126,19 +139,19 @@
             </div>
             <div>
                 <p class="title">Turtle</p>
-                <p class="desc">Isla de Sanctuaries</p>
+                <p class="desc" id="turtle-desc">Calculando...</p>
             </div>
         </div>
 
-        <!-- Dreams Skater -->
+        <!-- Eden / Reset -->
         <div class="card">
             <div class="card-header">
-                <span class="icon">⛸️</span>
-                <span class="timer" id="dreams-timer">--:--</span>
+                <span class="icon">🌀</span>
+                <span class="timer" id="eden-timer">--:--</span>
             </div>
             <div>
-                <p class="title">Dreams Skater</p>
-                <p class="desc">Carrera de hielo</p>
+                <p class="title">Daily Reset</p>
+                <p class="desc">Próximo reinicio</p>
             </div>
         </div>
 
@@ -146,27 +159,116 @@
         <div class="card shards-card">
             <div class="card-header">
                 <span class="icon">🌑</span>
-                <span class="timer" style="color: #ff5252;">Fragmento Rojo</span>
+                <span class="timer" id="shards-status" style="color: var(--accent-red);">Fragmento</span>
             </div>
             <div>
-                <p class="title" id="shards-info">Cargando estado de Shards...</p>
-                <p class="desc">Revisa el mapa del día en curso</p>
+                <p class="title" id="shards-realm">Cargando fragmentos...</p>
+                <p class="desc" id="shards-type">Verificando mapa actual</p>
             </div>
         </div>
     </div>
 
     <script>
-        function updateTimers() {
-            document.getElementById('geyser-timer').innerText = "1h 15m";
-            document.getElementById('grandma-timer').innerText = "0h 45m";
-            document.getElementById('turtle-timer').innerText = "2h 05m";
-            document.getElementById('dreams-timer').innerText = "00:15";
-            document.getElementById('shards-info').innerText = "Reino: Valle del Triunfo (Fragmento Rojo - Cera)";
+        // Función para formatear milisegundos a horas, minutos y segundos
+        function formatTime(ms) {
+            if (ms <= 0) return "¡EN VIVO!";
+            let totalSecs = Math.floor(ms / 1000);
+            let hours = Math.floor(totalSecs / 3600);
+            let mins = Math.floor((totalSecs % 3600) / 60);
+            let secs = totalSecs % 60;
+            
+            if (hours > 0) {
+                return `${hours}h ${mins < 10 ? '0' : ''}${mins}m ${secs < 10 ? '0' : ''}${secs}s`;
+            }
+            return `${mins}m ${secs < 10 ? '0' : ''}${secs}s`;
         }
-        setInterval(updateTimers, 1000);
-        updateTimers();
-    </script>
 
+        function updateSkyTimers() {
+            const now = new Date();
+            const utcNow = now.getTime() + (now.getTimezoneOffset() * 60000);
+            // Sky opera bajo hora UTC por lo general para ciclos fijos
+            const skyDate = new Date(utcNow); 
+            
+            const currentHour = skyDate.getUTCHours();
+            const currentMinute = skyDate.getUTCMinutes();
+            const currentSecond = skyDate.getUTCSeconds();
+            const totalCurrentSecs = (currentHour * 3600) + (currentMinute * 60) + currentSecond;
+
+            // --- CÁLCULO GEYSER (Cada 2 horas: 00:00, 02:00, 04:00... dura 15 min) ---
+            // Ciclo de 2 horas (7200 segundos)
+            let geyserInterval = 7200;
+            let geyserOffset = 0; // Empieza en hora en punto
+            let timeIntoGeyserCycle = (totalCurrentSecs - geyserOffset) % geyserInterval;
+            if (timeIntoGeyserCycle < 0) timeIntoGeyserCycle += geyserInterval;
+            
+            let geyserTimerEl = document.getElementById('geyser-timer');
+            let geyserDescEl = document.getElementById('geyser-desc');
+            
+            if (timeIntoGeyserCycle <= 900) { // Duración de 15 mins (900s)
+                geyserTimerEl.innerText = "¡EN VIVO!";
+                geyserTimerEl.className = "timer active-status";
+                geyserDescEl.innerText = "Termina en " + formatTime(900000 - (timeIntoGeyserCycle * 1000));
+            } else {
+                geyserTimerEl.className = "timer";
+                let timeLeft = geyserInterval - timeIntoGeyserCycle;
+                geyserTimerEl.innerText = formatTime(timeLeft * 1000);
+                geyserDescEl.innerText = "Próximo evento";
+            }
+
+            // --- CÁLCULO GRANDMA (Abuela - Cada 2 horas a los 35 min: 00:35, 02:35... dura 15 min) ---
+            let grandmaOffset = 35 * 60; // 35 minutos pasada la hora par
+            let grandmaInterval = 7200;
+            let timeIntoGrandmaCycle = (totalCurrentSecs - grandmaOffset) % grandmaInterval;
+            if (timeIntoGrandmaCycle < 0) timeIntoGrandmaCycle += grandmaInterval;
+
+            let grandmaTimerEl = document.getElementById('grandma-timer');
+            let grandmaDescEl = document.getElementById('grandma-desc');
+
+            if (timeIntoGrandmaCycle <= 900) {
+                grandmaTimerEl.innerText = "¡EN VIVO!";
+                grandmaTimerEl.className = "timer active-status";
+                grandmaDescEl.innerText = "Termina en " + formatTime(900000 - (timeIntoGrandmaCycle * 1000));
+            } else {
+                grandmaTimerEl.className = "timer";
+                let timeLeft = grandmaInterval - timeIntoGrandmaCycle;
+                grandmaTimerEl.innerText = formatTime(timeLeft * 1000);
+                grandmaDescEl.innerText = "Cena en abuela";
+            }
+
+            // --- CÁLCULO TURTLE (Tortuga - Cada 2 horas a los 50 min: 00:50, 02:50... dura 20 min) ---
+            let turtleOffset = 50 * 60;
+            let turtleInterval = 7200;
+            let timeIntoTurtleCycle = (totalCurrentSecs - turtleOffset) % turtleInterval;
+            if (timeIntoTurtleCycle < 0) timeIntoTurtleCycle += turtleInterval;
+
+            let turtleTimerEl = document.getElementById('turtle-timer');
+            let turtleDescEl = document.getElementById('turtle-desc');
+
+            if (timeIntoTurtleCycle <= 1200) { // Duración de 20 mins (1200s)
+                turtleTimerEl.innerText = "¡EN VIVO!";
+                turtleTimerEl.className = "timer active-status";
+                turtleDescEl.innerText = "Termina en " + formatTime(1200000 - (timeIntoTurtleCycle * 1000));
+            } else {
+                turtleTimerEl.className = "timer";
+                let timeLeft = turtleInterval - timeIntoTurtleCycle;
+                turtleTimerEl.innerText = formatTime(timeLeft * 1000);
+                turtleDescEl.innerText = "Sanctuary Islands";
+            }
+
+            // --- REINICIO DIARIO (Midnight UTC) ---
+            let secsToReset = 86400 - (totalCurrentSecs % 86400);
+            document.getElementById('eden-timer').innerText = formatTime(secsToReset * 1000);
+
+            // --- SHARDS (Fragmentos - Lógica simulada basada en fecha actual UTC) ---
+            let dayOfYear = Math.floor((skyDate - new Date(skyDate.getUTCFullYear(), 0, 0)) / 86400000);
+            let realms = ["Pradera (Prairie)", "Bosque (Forest)", "Valle (Valley)", "Páramo (Wasteland)", "Bóveda (Vault)"];
+            let shardRealm = realms[dayOfYear % realms.length];
+            document.getElementById('shards-realm').innerText = "Reino de hoy: " + shardRealm;
+            document.getElementById('shards-type').innerText = (dayOfYear % 2 === 0) ? "🔴 Fragmento Rojo (Otorga Cera)" : "⚫ Fragmento Negro (Otorga Ascended Candles)";
+        }
+
+        setInterval(updateSkyTimers, 1000);
+        updateSkyTimers();
+    </script>
 </body>
-                  </html>
-                  
+</html>
