@@ -12,6 +12,7 @@
             --text-secondary: #a0a0a0;
             --accent-red: #ff5252;
             --accent-green: #69f0ae;
+            --btn-bg: #1e1e1e;
         }
 
         body {
@@ -20,6 +21,7 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             margin: 0;
             padding: 16px;
+            padding-bottom: 80px;
         }
 
         h1 {
@@ -34,7 +36,32 @@
             font-size: 13px;
             text-align: center;
             margin-top: 0;
-            margin-bottom: 24px;
+            margin-bottom: 20px;
+        }
+
+        /* Botón de Notificaciones */
+        .notif-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .btn-notif {
+            background-color: var(--btn-bg);
+            color: var(--text-primary);
+            border: 1px solid #333;
+            padding: 10px 18px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            transition: 0.2s;
+        }
+
+        .btn-notif.active {
+            background-color: #1b5e20;
+            border-color: #2e7d32;
+            color: #a5d6a7;
         }
 
         .grid {
@@ -106,6 +133,11 @@
     <h1>Sky: Timers & Shards</h1>
     <p class="subtitle">Horarios oficiales en tiempo real</p>
 
+    <!-- Botón para habilitar alarmas/sonido -->
+    <div class="notif-container">
+        <button id="notif-btn" class="btn-notif" onclick="toggleNotifications()">🔔 Activar Alertas con Sonido</button>
+    </div>
+
     <div class="grid">
         <!-- Geyser -->
         <div class="card">
@@ -168,8 +200,51 @@
         </div>
     </div>
 
+    <audio id="alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
+
     <script>
-        // Función para formatear milisegundos a horas, minutos y segundos
+        let notificationsEnabled = false;
+        let alertedGeyser = false;
+        let alertedGrandma = false;
+
+        function toggleNotifications() {
+            const btn = document.getElementById('notif-btn');
+            
+            if (!("Notification" in window)) {
+                alert("Este navegador no soporta notificaciones.");
+                return;
+            }
+
+            Notification.requestPermission().then(permission => {
+                if (permission === "granted") {
+                    notificationsEnabled = true;
+                    btn.innerText = "🔕 Alertas Activas (Con Sonido)";
+                    btn.classList.add("active");
+                    // Reproducir un sonido de prueba para desbloquear el audio en el celular
+                    document.getElementById('alert-sound').play().catch(e => console.log(e));
+                    alert("¡Alertas activadas! Te avisaremos cuando falten 5 minutos para el Geyser y la Abuela.");
+                } else {
+                    alert("Permiso de notificaciones denegado.");
+                }
+            });
+        }
+
+        function playAlertSound() {
+            if (notificationsEnabled) {
+                let audio = document.getElementById('alert-sound');
+                audio.play().catch(e => console.log("Audio bloqueado:", e));
+            }
+        }
+
+        function sendSystemNotification(title, body) {
+            if (notificationsEnabled && Notification.permission === "granted") {
+                new Notification(title, {
+                    body: body,
+                    icon: "https://img.icons8.com/color/96/sky-children-of-the-light.png"
+                });
+            }
+        }
+
         function formatTime(ms) {
             if (ms <= 0) return "¡EN VIVO!";
             let totalSecs = Math.floor(ms / 1000);
@@ -186,7 +261,6 @@
         function updateSkyTimers() {
             const now = new Date();
             const utcNow = now.getTime() + (now.getTimezoneOffset() * 60000);
-            // Sky opera bajo hora UTC por lo general para ciclos fijos
             const skyDate = new Date(utcNow); 
             
             const currentHour = skyDate.getUTCHours();
@@ -194,48 +268,56 @@
             const currentSecond = skyDate.getUTCSeconds();
             const totalCurrentSecs = (currentHour * 3600) + (currentMinute * 60) + currentSecond;
 
-            // --- CÁLCULO GEYSER (Cada 2 horas: 00:00, 02:00, 04:00... dura 15 min) ---
-            // Ciclo de 2 horas (7200 segundos)
+            // --- GEYSER (Cada 2 horas, dura 15 min) ---
             let geyserInterval = 7200;
-            let geyserOffset = 0; // Empieza en hora en punto
-            let timeIntoGeyserCycle = (totalCurrentSecs - geyserOffset) % geyserInterval;
-            if (timeIntoGeyserCycle < 0) timeIntoGeyserCycle += geyserInterval;
+            let timeIntoGeyserCycle = totalCurrentSecs % geyserInterval;
             
             let geyserTimerEl = document.getElementById('geyser-timer');
             let geyserDescEl = document.getElementById('geyser-desc');
             
-            if (timeIntoGeyserCycle <= 900) { // Duración de 15 mins (900s)
+            let timeToGeyser = geyserInterval - timeIntoGeyserCycle;
+            // Alerta cuando falten 5 minutos exactos (300 segundos) y no se haya avisado
+            if (timeToGeyser === 300 && notificationsEnabled) {
+                playAlertSound();
+                sendSystemNotification("🌋 ¡El Geyser está cerca!", "Empieza en 5 minutos. ¡Prepara tus velas!");
+            }
+
+            if (timeIntoGeyserCycle <= 900) {
                 geyserTimerEl.innerText = "¡EN VIVO!";
                 geyserTimerEl.className = "timer active-status";
                 geyserDescEl.innerText = "Termina en " + formatTime(900000 - (timeIntoGeyserCycle * 1000));
             } else {
                 geyserTimerEl.className = "timer";
-                let timeLeft = geyserInterval - timeIntoGeyserCycle;
-                geyserTimerEl.innerText = formatTime(timeLeft * 1000);
+                geyserTimerEl.innerText = formatTime(timeToGeyser * 1000);
                 geyserDescEl.innerText = "Próximo evento";
             }
 
-            // --- CÁLCULO GRANDMA (Abuela - Cada 2 horas a los 35 min: 00:35, 02:35... dura 15 min) ---
-            let grandmaOffset = 35 * 60; // 35 minutos pasada la hora par
+            // --- GRANDMA (Cada 2 horas a los 35 min, dura 15 min) ---
+            let grandmaOffset = 35 * 60;
             let grandmaInterval = 7200;
             let timeIntoGrandmaCycle = (totalCurrentSecs - grandmaOffset) % grandmaInterval;
             if (timeIntoGrandmaCycle < 0) timeIntoGrandmaCycle += grandmaInterval;
 
             let grandmaTimerEl = document.getElementById('grandma-timer');
             let grandmaDescEl = document.getElementById('grandma-desc');
+            let timeToGrandma = grandmaInterval - timeIntoGrandmaCycle;
+
+            if (timeToGrandma === 300 && notificationsEnabled) {
+                playAlertSound();
+                sendSystemNotification("🥣 ¡Cena en Abuela!", "Empieza en 5 minutos en el Bosque Oculto.");
+            }
 
             if (timeIntoGrandmaCycle <= 900) {
                 grandmaTimerEl.innerText = "¡EN VIVO!";
                 grandmaTimerEl.className = "timer active-status";
                 grandmaDescEl.innerText = "Termina en " + formatTime(900000 - (timeIntoGrandmaCycle * 1000));
             } else {
-                grandmaTimerEl.className = "timer";
-                let timeLeft = grandmaInterval - timeIntoGrandmaCycle;
-                grandmaTimerEl.innerText = formatTime(timeLeft * 1000);
+                grandmaTimerEl.className, grandmaTimerEl.className = "timer";
+                grandmaTimerEl.innerText = formatTime(timeToGrandma * 1000);
                 grandmaDescEl.innerText = "Cena en abuela";
             }
 
-            // --- CÁLCULO TURTLE (Tortuga - Cada 2 horas a los 50 min: 00:50, 02:50... dura 20 min) ---
+            // --- TURTLE (Cada 2 horas a los 50 min, dura 20 min) ---
             let turtleOffset = 50 * 60;
             let turtleInterval = 7200;
             let timeIntoTurtleCycle = (totalCurrentSecs - turtleOffset) % turtleInterval;
@@ -243,23 +325,23 @@
 
             let turtleTimerEl = document.getElementById('turtle-timer');
             let turtleDescEl = document.getElementById('turtle-desc');
+            let timeToTurtle = turtleInterval - timeIntoTurtleCycle;
 
-            if (timeIntoTurtleCycle <= 1200) { // Duración de 20 mins (1200s)
+            if (timeIntoTurtleCycle <= 1200) {
                 turtleTimerEl.innerText = "¡EN VIVO!";
                 turtleTimerEl.className = "timer active-status";
                 turtleDescEl.innerText = "Termina en " + formatTime(1200000 - (timeIntoTurtleCycle * 1000));
             } else {
                 turtleTimerEl.className = "timer";
-                let timeLeft = turtleInterval - timeIntoTurtleCycle;
-                turtleTimerEl.innerText = formatTime(timeLeft * 1000);
+                turtleTimerEl.innerText = formatTime(timeToTurtle * 1000);
                 turtleDescEl.innerText = "Sanctuary Islands";
             }
 
-            // --- REINICIO DIARIO (Midnight UTC) ---
+            // --- RESET DIARIO ---
             let secsToReset = 86400 - (totalCurrentSecs % 86400);
             document.getElementById('eden-timer').innerText = formatTime(secsToReset * 1000);
 
-            // --- SHARDS (Fragmentos - Lógica simulada basada en fecha actual UTC) ---
+            // --- SHARDS (Fragmentos) ---
             let dayOfYear = Math.floor((skyDate - new Date(skyDate.getUTCFullYear(), 0, 0)) / 86400000);
             let realms = ["Pradera (Prairie)", "Bosque (Forest)", "Valle (Valley)", "Páramo (Wasteland)", "Bóveda (Vault)"];
             let shardRealm = realms[dayOfYear % realms.length];
